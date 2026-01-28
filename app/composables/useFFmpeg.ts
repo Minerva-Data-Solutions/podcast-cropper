@@ -43,9 +43,35 @@ export const useFFmpeg = () => {
     return new Blob([(data as any).buffer], { type: 'audio/mpeg' })
   }
 
+  const extractClip = async (videoFile: File, start: number, end: number): Promise<Blob> => {
+    if (!isLoaded.value) await load()
+
+    const inputName = 'input.mp4'
+    const outputName = 'clip.mp4'
+    const duration = end - start
+
+    await ffmpeg.writeFile(inputName, await fetchFile(videoFile))
+    
+    // Extract clip without re-encoding if possible (-c copy) 
+    // but for precision we might need to re-encode
+    await ffmpeg.exec([
+      '-ss', start.toString(),
+      '-i', inputName,
+      '-t', duration.toString(),
+      '-c:v', 'libx264',
+      '-c:a', 'aac',
+      '-preset', 'ultrafast',
+      outputName
+    ])
+    
+    const data = await ffmpeg.readFile(outputName)
+    return new Blob([(data as any).buffer], { type: 'video/mp4' })
+  }
+
   return {
     load,
     extractAudio,
+    extractClip,
     isLoading,
     progress,
     isLoaded
