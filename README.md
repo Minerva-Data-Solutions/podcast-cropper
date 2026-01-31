@@ -1,75 +1,169 @@
-# Nuxt Minimal Starter
+# Podcast Cropper
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+A modern, local-first web application for intelligently extracting engaging clips from podcast videos. Built with Nuxt 4, Vue 3, and powered by AI for transcription and theme analysis.
 
-## Setup
+## Features
 
-Make sure to install dependencies:
+- 🎬 **Video Upload & Processing**: Upload podcast videos in various formats
+- 🎤 **Audio Extraction**: Extract and optimize audio for transcription
+- 📝 **AI Transcription**: Automatic transcription using Groq's Whisper API
+- 🧠 **Theme Analysis**: Intelligently identify engaging segments and themes
+- ✂️ **Video Clipping**: Extract precise video clips using FFmpeg
+- 🌟 **Interest Scoring**: AI-powered scoring of segment engagement levels
+- 📱 **Responsive Design**: Mobile-first design with Tailwind CSS and DaisyUI
+- 🏃 **Local Processing**: Runs entirely in your browser (no server required)
+
+## Tech Stack
+
+- **Frontend**: Nuxt 4, Vue 3, TypeScript
+- **Styling**: Tailwind CSS, DaisyUI
+- **Audio Processing**: FFmpeg.wasm (runs in browser)
+- **AI Services**: Groq API (Whisper for transcription, LLM for analysis)
+- **Deployment**: Docker with multi-stage build
+
+## Quick Start
+
+### Local Development
 
 ```bash
-# npm
-npm install
-
-# pnpm
-pnpm install
-
-# yarn
-yarn install
-
-# bun
+# Install dependencies
 bun install
+
+# Start development server
+bun dev
+
+# Build for production
+bun build
 ```
 
-## Development Server
-
-Start the development server on `http://localhost:3000`:
+### Docker Deployment
 
 ```bash
-# npm
-npm run dev
+# Build the image
+docker build -t podcast-cropper .
 
-# pnpm
-pnpm dev
-
-# yarn
-yarn dev
-
-# bun
-bun run dev
+# Run the container
+docker run -p 3000:3000 -e GROQ_API_KEY=your_key_here podcast-cropper
 ```
 
-## Production
+## Configuration
 
-Build the application for production:
+### Environment Variables
 
-```bash
-# npm
-npm run build
+- `GROQ_API_KEY`: Your Groq API key for AI services (optional, but recommended)
 
-# pnpm
-pnpm build
+### Groq API
 
-# yarn
-yarn build
+This project uses Groq's API for:
+- **Whisper Large v3**: Audio transcription
+- **Groq LLM**: Theme analysis and segmentation
 
-# bun
-bun run build
+Get your free API key at [console.groq.com](https://console.groq.com)
+
+## Next Steps: Local SLM Support
+
+The next major iteration will include local Small Language Model (SLM) support to eliminate dependency on external AI services:
+
+### Planned Features
+
+1. **Local Whisper Integration** via Ollama
+   - Run Whisper model locally for transcription
+   - No API key required
+   - Private processing in your browser or local server
+
+2. **Local LLM via Ollama**
+   - Run lightweight models like LLaMA 2, Mistral, or CodeLlama
+   - Theme analysis and segmentation without external API calls
+   - Completely offline operation
+
+3. **Ollama Server Integration**
+   - Optional local Ollama server deployment
+   - Docker compose setup for easy local development
+   - Fallback to Groq API when local models unavailable
+
+### Implementation Roadmap
+
+- [ ] Add Ollama client library and configuration
+- [ ] Create local transcription service using Whisper via Ollama
+- [ ] Implement local theme analysis using local LLM models
+- [ ] Add system health checks for local model availability
+- [ ] Create Docker compose configuration for Ollama server
+- [ ] Add graceful failover between local and cloud AI services
+- [ ] Update documentation for local deployment options
+
+### Benefits of Local SLM Support
+
+- **Privacy**: All processing happens locally
+- **Cost**: No API usage fees
+- **Reliability**: No dependency on external services
+- **Speed**: Local inference can be faster than API calls
+- **Control**: Full control over model selection and configuration
+
+## Architecture
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Video File    │───▶│  FFmpeg Audio    │───▶│   Transcription │
+│                 │    │   Extraction     │    │    (Groq API)   │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                                                        │
+                                                        ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Final Clips   │◀───│  Video Clipping  │◀───│   Theme Analysis│
+│                 │    │   (FFmpeg)       │    │    (Groq LLM)   │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
 ```
 
-Locally preview production build:
+## Local Development with Docker Compose (Future)
 
-```bash
-# npm
-npm run preview
+Once local SLM support is implemented:
 
-# pnpm
-pnpm preview
-
-# yarn
-yarn preview
-
-# bun
-bun run preview
+```yaml
+# docker-compose.yml
+version: '3.8'
+services:
+  podcast-cropper:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - OLLAMA_URL=http://ollama:11434
+    depends_on:
+      - ollama
+      
+  ollama:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+      
+volumes:
+  ollama_models:
 ```
 
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
+
+## License
+
+MIT License - see LICENSE file for details
+
+## Support
+
+For issues and questions:
+- Open an issue on GitHub
+- Check the documentation below
+
+### Troubleshooting
+
+**FFmpeg Loading Issues**: Ensure your browser supports WebAssembly and has proper CORS headers.
+
+**API Key Issues**: Verify your Groq API key is valid and has sufficient credits.
+
+**Large File Processing**: Consider file size limits in browser environments (typically 2GB for most browsers).
