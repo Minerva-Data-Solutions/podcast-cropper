@@ -32,5 +32,6 @@ export default defineNuxtConfig({
         },
       },
     },
+    preset: 'bun'
   },
 })
