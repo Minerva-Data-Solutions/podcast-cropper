@@ -7,12 +7,15 @@ const { extractAudio, extractClip, isLoading: isFFmpegLoading, progress: ffmpegP
 const videoFile = ref<File | null>(null)
 const videoUrl = ref<string | null>(null)
 const videoPlayer = ref<HTMLVideoElement | null>(null)
+const videoDuration = ref(0)
 
 const transcription = ref<TranscriptionSegment[]>([])
+const transcriptionText = ref('')
 const themes = ref<ThemeSegment[]>([])
 const isProcessing = ref(false)
 const isExporting = ref(false)
 const statusMessage = ref('')
+const copySuccess = ref(false)
 
 const currentTime = ref(0)
 
@@ -23,7 +26,63 @@ const onFileChange = (e: Event) => {
     videoUrl.value = URL.createObjectURL(videoFile.value)
     // Reset state
     transcription.value = []
+    transcriptionText.value = ''
     themes.value = []
+    videoDuration.value = 0
+  }
+}
+
+const downloadTranscription = () => {
+  if (!transcriptionText.value) return
+  
+  const text = transcriptionText.value
+  const blob = new Blob([text], { type: 'text/plain' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  
+  // Generate filename from video file name or use default
+  const videoName = videoFile.value?.name.replace(/\.[^/.]+$/, '') || 'transcription'
+  a.download = `${videoName}_transcription.txt`
+  
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+const copyTranscription = async () => {
+  if (!transcriptionText.value) return
+  
+  try {
+    await navigator.clipboard.writeText(transcriptionText.value)
+    copySuccess.value = true
+    setTimeout(() => {
+      copySuccess.value = false
+    }, 2000)
+  } catch (error) {
+    console.error('Failed to copy transcription:', error)
+    // Fallback for older browsers
+    const textArea = document.createElement('textarea')
+    textArea.value = transcriptionText.value
+    textArea.style.position = 'fixed'
+    textArea.style.opacity = '0'
+    document.body.appendChild(textArea)
+    textArea.select()
+    try {
+      document.execCommand('copy')
+      copySuccess.value = true
+      setTimeout(() => {
+        copySuccess.value = false
+      }, 2000)
+    } catch (err) {
+      console.error('Fallback copy failed:', err)
+    }
+    document.body.removeChild(textArea)
+  }
+}
+
+const onVideoLoadedMetadata = () => {
+  if (videoPlayer.value) {
+    videoDuration.value = videoPlayer.value.duration || 0
   }
 }
 
@@ -41,17 +100,60 @@ const processVideo = async () => {
     statusMessage.value = 'Transcribing with Groq Whisper...'
     const { text, segments } = await transcribeAudio(audioBlob)
     transcription.value = segments
+    transcriptionText.value = text
+
+    // Get video duration - use stored value or wait for metadata
+    let finalDuration = videoDuration.value || videoPlayer.value?.duration || 0
+    
+    // If video duration not available yet, wait for it to load
+    if (!finalDuration && videoPlayer.value) {
+      await new Promise((resolve) => {
+        const onLoadedMetadata = () => {
+          if (videoPlayer.value) {
+            finalDuration = videoPlayer.value.duration || 0
+            videoDuration.value = finalDuration
+          }
+          videoPlayer.value?.removeEventListener('loadedmetadata', onLoadedMetadata)
+          resolve(null)
+        }
+        videoPlayer.value?.addEventListener('loadedmetadata', onLoadedMetadata)
+        // If already loaded, check immediately
+        if (videoPlayer.value.readyState >= 1) {
+          onLoadedMetadata()
+        } else {
+          // Timeout after 5 seconds
+          setTimeout(resolve, 5000)
+        }
+      })
+    }
+    
+    // Fallback to last segment end time if video duration still not available
+    if (!finalDuration && segments.length > 0) {
+      finalDuration = segments[segments.length - 1]?.end || 0
+    }
 
     statusMessage.value = 'Analyzing themes with Groq Llama 3...'
-    const analyzedThemes = await analyzeThemes(text)
+    const analyzedThemes = await analyzeThemes(text, segments, finalDuration)
+    
+    // Validate and clamp theme timestamps to actual video duration
     themes.value = analyzedThemes
-      .map((theme) => ({
-        ...theme,
-        start: Number(theme.start),
-        end: Number(theme.end),
-        interestScore: Number(theme.interestScore),
-      }))
-      .filter((theme) => Number.isFinite(theme.start) && Number.isFinite(theme.end) && theme.end > theme.start)
+      .map((theme) => {
+        const start = Math.max(0, Math.min(Number(theme.start) || 0, finalDuration))
+        const end = Math.max(start, Math.min(Number(theme.end) || start + 1, finalDuration))
+        return {
+          ...theme,
+          start,
+          end,
+          interestScore: Number(theme.interestScore) || 0,
+        }
+      })
+      .filter((theme) => 
+        Number.isFinite(theme.start) && 
+        Number.isFinite(theme.end) && 
+        theme.end > theme.start &&
+        theme.start >= 0 &&
+        theme.end <= finalDuration
+      )
 
     statusMessage.value = ''
   } catch (error) {
@@ -149,6 +251,7 @@ const formatTime = (seconds: number) => {
             controls 
             class="max-h-full max-w-full object-contain"
             @timeupdate="onTimeUpdate"
+            @loadedmetadata="onVideoLoadedMetadata"
           ></video>
           <div v-else class="text-base-content/30 uppercase tracking-widest text-sm">
             No hi ha cap vídeo carregat.
@@ -215,7 +318,38 @@ const formatTime = (seconds: number) => {
       <!-- Transcription Sidebar (25%) -->
       <aside class="w-1/4 bg-base-100 flex flex-col">
         <div class="p-6 border-b border-base-300">
-          <h2 class="text-sm font-bold uppercase tracking-widest">Transcripció</h2>
+          <div class="flex justify-between items-center mb-3">
+            <h2 class="text-sm font-bold uppercase tracking-widest">Transcripció</h2>
+            <div v-if="videoDuration > 0" class="text-[10px] text-base-content/50 uppercase">
+              {{ formatTime(videoDuration) }}
+            </div>
+          </div>
+          <div v-if="transcriptionText" class="flex gap-2">
+            <button 
+              @click="downloadTranscription"
+              class="btn btn-xs btn-ghost uppercase text-[9px] tracking-wider"
+              title="Download transcription as .txt file"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3 h-3 mr-1">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              Download
+            </button>
+            <button 
+              @click="copyTranscription"
+              class="btn btn-xs btn-ghost uppercase text-[9px] tracking-wider"
+              :class="{ 'btn-success': copySuccess }"
+              title="Copy transcription to clipboard"
+            >
+              <svg v-if="!copySuccess" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3 h-3 mr-1">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" />
+              </svg>
+              <svg v-else xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3 h-3 mr-1">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              </svg>
+              {{ copySuccess ? 'Copied!' : 'Copy' }}
+            </button>
+          </div>
         </div>
         <div class="flex-1 overflow-y-auto p-8 font-serif leading-relaxed text-lg">
           <div v-if="transcription.length > 0" class="space-y-6">

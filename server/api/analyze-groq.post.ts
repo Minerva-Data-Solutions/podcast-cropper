@@ -52,7 +52,7 @@ export default defineEventHandler(async (event) => {
       })
     }
     
-    const { transcription } = body
+    const { transcription, segments = [], videoDuration = 0 } = body
     
     // Validate transcription
     const validation = validateTranscription(transcription)
@@ -63,13 +63,34 @@ export default defineEventHandler(async (event) => {
       })
     }
     
+    // Calculate actual duration from segments if not provided
+    const actualDuration = videoDuration > 0 
+      ? videoDuration 
+      : segments.length > 0 
+        ? Math.max(...segments.map((s: any) => s.end || 0))
+        : 0
+    
+    // Build segments reference for the LLM
+    const segmentsInfo = segments.length > 0
+      ? `\n\nTranscription segments with accurate timestamps:\n${segments.slice(0, 20).map((s: any, i: number) => 
+          `[${s.start.toFixed(1)}s - ${s.end.toFixed(1)}s]: ${s.text.substring(0, 100)}${s.text.length > 100 ? '...' : ''}`
+        ).join('\n')}${segments.length > 20 ? `\n... and ${segments.length - 20} more segments` : ''}`
+      : ''
+    
     const prompt = `Analyze the following video transcription and divide it into logical "themes" or "chapters".
 For each theme, provide:
-1. A start time in seconds (as a number).
-2. An end time in seconds (as a number).
+1. A start time in seconds (as a number) - MUST match actual timestamps from the transcription segments below.
+2. An end time in seconds (as a number) - MUST match actual timestamps from the transcription segments below.
 3. A short, punchy title.
 4. A one-sentence summary.
 5. An interestScore (a number between 0 and 1) representing how engaging or "viral" this specific segment is.
+
+IMPORTANT CONSTRAINTS:
+- The video duration is ${actualDuration.toFixed(1)} seconds (${(actualDuration / 60).toFixed(1)} minutes)
+- ALL start and end times MUST be between 0 and ${actualDuration.toFixed(1)} seconds
+- Use the exact timestamps from the transcription segments provided below
+- Do NOT create segments that exceed the video duration
+- Ensure segments cover the entire duration from 0 to ${actualDuration.toFixed(1)} seconds
 
 Format the output as a JSON object with a key "themes" containing an array of these objects.
 Example:
@@ -82,8 +103,8 @@ Example:
 Ensure the segments cover the entire duration and do not overlap significantly.
 Mandatory to write in the language of the transcription.
 
-Transcription:
-${transcription}`
+Full transcription text:
+${transcription}${segmentsInfo}`
 
     const chatCompletion = await groq.chat.completions.create({
       messages: [
@@ -97,10 +118,29 @@ ${transcription}`
     const content = chatCompletion.choices[0]?.message?.content || '{"themes": []}'
     const parsed = JSON.parse(content)
     
+    // Validate and clamp theme timestamps to actual video duration
+    const validatedThemes = (parsed.themes || []).map((theme: any) => {
+      const start = Math.max(0, Math.min(Number(theme.start) || 0, actualDuration))
+      const end = Math.max(start, Math.min(Number(theme.end) || start + 1, actualDuration))
+      return {
+        ...theme,
+        start,
+        end,
+        interestScore: Number(theme.interestScore) || 0
+      }
+    }).filter((theme: any) => 
+      Number.isFinite(theme.start) && 
+      Number.isFinite(theme.end) && 
+      theme.end > theme.start &&
+      theme.start >= 0 &&
+      theme.end <= actualDuration
+    )
+    
     return {
       success: true,
-      themes: parsed.themes || [],
+      themes: validatedThemes,
       service: 'groq',
+      videoDuration: actualDuration,
       rateLimit: {
         remaining: rateLimit.remaining,
         resetAt: new Date(rateLimit.resetAt).toISOString()

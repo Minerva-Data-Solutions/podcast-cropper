@@ -36,7 +36,11 @@ export const transcribeAudio = async (audioBlob: Blob): Promise<{ text: string, 
   }
 }
 
-export const analyzeThemes = async (transcription: string): Promise<ThemeSegment[]> => {
+export const analyzeThemes = async (
+  transcription: string, 
+  segments: TranscriptionSegment[] = [], 
+  videoDuration: number = 0
+): Promise<ThemeSegment[]> => {
   const response = await $fetch<{
     success: boolean
     themes: ThemeSegment[]
@@ -44,7 +48,9 @@ export const analyzeThemes = async (transcription: string): Promise<ThemeSegment
   }>('/api/analyze-groq', {
     method: 'POST',
     body: {
-      transcription
+      transcription,
+      segments,
+      videoDuration
     }
   })
   
