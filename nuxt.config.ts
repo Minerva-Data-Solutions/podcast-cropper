@@ -8,12 +8,12 @@ export default defineNuxtConfig({
   ssr: false,
   modules: ['@nuxtjs/tailwindcss'],
   runtimeConfig: {
-    public: {
-      groqApiKey: process.env.GROQ_API_KEY || '',
-    },
+    groqApiKey: process.env.GROQ_API_KEY || '',
     whisperUrl: process.env.WHISPER_URL || 'http://localhost:8000',
     ollamaUrl: process.env.OLLAMA_URL || 'http://localhost:11434',
-    nodeEnv: process.env.NODE_ENV || 'development'
+    nodeEnv: process.env.NODE_ENV || 'development',
+    rateLimitMaxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '10', 10),
+    rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '3600000', 10) // 1 hour default
   },
   vite: {
     optimizeDeps: {
@@ -35,6 +35,6 @@ export default defineNuxtConfig({
         },
       },
     },
-    preset: 'bun'
+    preset: 'bun',
   },
 })

@@ -42,15 +42,39 @@ bun build
 # Build the image
 docker build -t podcast-cropper .
 
-# Run the container
-docker run -p 3000:3000 -e GROQ_API_KEY=your_key_here podcast-cropper
+# Run the container with rate limiting
+docker run -p 3000:3000 \
+  -e GROQ_API_KEY=your_key_here \
+  -e RATE_LIMIT_MAX_REQUESTS=10 \
+  -e RATE_LIMIT_WINDOW_MS=3600000 \
+  podcast-cropper
+```
+
+### Rate Limiting
+
+The application includes built-in rate limiting to prevent abuse:
+- **Default:** 10 requests per hour per IP address
+- **Configurable:** Set `RATE_LIMIT_MAX_REQUESTS` and `RATE_LIMIT_WINDOW_MS` environment variables
+- **Response:** Returns HTTP 429 with reset time when limit exceeded
+
+Example configurations:
+```bash
+# 20 requests per hour
+RATE_LIMIT_MAX_REQUESTS=20
+RATE_LIMIT_WINDOW_MS=3600000
+
+# 5 requests per 30 minutes
+RATE_LIMIT_MAX_REQUESTS=5
+RATE_LIMIT_WINDOW_MS=1800000
 ```
 
 ## Configuration
 
 ### Environment Variables
 
-- `GROQ_API_KEY`: Your Groq API key for AI services (optional, but recommended)
+- `GROQ_API_KEY`: Your Groq API key for AI services (required for Groq API usage)
+- `RATE_LIMIT_MAX_REQUESTS`: Maximum requests per time window (default: 10)
+- `RATE_LIMIT_WINDOW_MS`: Time window in milliseconds (default: 3600000 = 1 hour)
 
 ### Groq API
 
@@ -166,4 +190,4 @@ For issues and questions:
 
 **API Key Issues**: Verify your Groq API key is valid and has sufficient credits.
 
-**Large File Processing**: Consider file size limits in browser environments (typically 2GB for most browsers).
+**Large File Processing**: Supports files up to 3GB. Browser memory limits may apply for very large files during client-side processing.
