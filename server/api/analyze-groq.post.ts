@@ -1,6 +1,6 @@
 export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig()
-  const groqApiKey = config.groqApiKey
+  const config = useRuntimeConfig(event);
+  const groqApiKey = config.groqApiKey || process.env.NUXT_GROQ_API_KEY;
   
   if (!groqApiKey) {
     throw createError({
