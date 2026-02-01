@@ -8,7 +8,7 @@ export default defineNuxtConfig({
   ssr: false,
   modules: ['@nuxtjs/tailwindcss'],
   runtimeConfig: {
-    groqApiKey: process.env.NUXT_GROQ_API_KEY || '',
+    groqApiKey: process.env.GROQ_API_KEY || process.env.NUXT_GROQ_API_KEY || '',
     whisperUrl: process.env.WHISPER_URL || 'http://localhost:8000',
     ollamaUrl: process.env.OLLAMA_URL || 'http://localhost:11434',
     nodeEnv: process.env.NODE_ENV || 'development',

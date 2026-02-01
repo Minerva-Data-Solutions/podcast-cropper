@@ -1,21 +1,30 @@
 export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig(event);
-  const groqApiKey = config.groqApiKey || process.env.NUXT_GROQ_API_KEY;
+  const config = useRuntimeConfig()
+  const groqApiKey = config.groqApiKey || process.env.GROQ_API_KEY || process.env.NUXT_GROQ_API_KEY
   
   if (!groqApiKey) {
+    // Debug: Check if env var is set but not being read
+    const envKey = process.env.GROQ_API_KEY || process.env.NUXT_GROQ_API_KEY
+    const hasEnvKey = !!envKey
+    
+    console.error('Groq API key not found in runtime config', {
+      hasEnvKey,
+      envKeyLength: envKey?.length || 0,
+      nodeEnv: process.env.NODE_ENV
+    })
+    
     throw createError({
       statusCode: 400,
-      statusMessage: 'Groq API key not configured'
+      statusMessage: 'Groq API key not configured. Please set GROQ_API_KEY or NUXT_GROQ_API_KEY environment variable.'
     })
   }
   
-  // Rate limiting
-  const { checkRateLimit } = await import('../utils/rateLimiter')
+  // Global rate limiting (shared bucket for all requests)
+  const { checkGlobalRateLimit } = await import('../utils/rateLimiter')
   const maxRequests = config.rateLimitMaxRequests || 10
   const windowMs = config.rateLimitWindowMs || 3600000 // 1 hour default
   
-  const clientId = getClientIdentifier(event) || 'unknown'
-  const rateLimit = checkRateLimit(clientId, maxRequests, windowMs)
+  const rateLimit = checkGlobalRateLimit(maxRequests, windowMs)
   
   if (!rateLimit.allowed) {
     const resetDate = new Date(rateLimit.resetAt)
