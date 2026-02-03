@@ -118,7 +118,7 @@ const processVideo = async () => {
         }
         videoPlayer.value?.addEventListener('loadedmetadata', onLoadedMetadata)
         // If already loaded, check immediately
-        if (videoPlayer.value.readyState >= 1) {
+        if (videoPlayer.value?.readyState && videoPlayer.value.readyState >= 1) {
           onLoadedMetadata()
         } else {
           // Timeout after 5 seconds
@@ -363,7 +363,13 @@ const formatTime = (seconds: number) => {
               }"
               @click="seekTo(s.start)"
             >
-              {{ s.text }}
+              <span class="text-sm uppercase tracking-widest text-primary/70">
+                {{ formatTime(s.start) }} - {{ formatTime(s.end) }}
+              </span>
+              <br />
+              <span class="text-md">
+                {{ s.text }}
+              </span>
             </p>
           </div>
           <div v-else class="h-full flex items-center justify-center text-center text-base-content/20 uppercase tracking-widest text-xs italic">
