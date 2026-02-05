@@ -32,10 +32,18 @@ const onFileChange = (e: Event) => {
   }
 }
 
-const downloadTranscription = () => {
+const buildTranscriptionText = (includeTimestamps: boolean) => {
+  if (!includeTimestamps) return transcriptionText.value
+
+  return transcription.value
+    .map((segment) => `${formatTime(segment.start)} - ${formatTime(segment.end)}\n${segment.text}`)
+    .join('\n\n')
+}
+
+const downloadTranscription = (includeTimestamps: boolean) => {
   if (!transcriptionText.value) return
   
-  const text = transcriptionText.value
+  const text = buildTranscriptionText(includeTimestamps)
   const blob = new Blob([text], { type: 'text/plain' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -43,7 +51,9 @@ const downloadTranscription = () => {
   
   // Generate filename from video file name or use default
   const videoName = videoFile.value?.name.replace(/\.[^/.]+$/, '') || 'transcription'
-  a.download = `${videoName}_transcription.txt`
+  a.download = includeTimestamps
+    ? `${videoName}_transcription_timestamps.txt`
+    : `${videoName}_transcription.txt`
   
   a.click()
   URL.revokeObjectURL(url)
@@ -326,7 +336,7 @@ const formatTime = (seconds: number) => {
           </div>
           <div v-if="transcriptionText" class="flex gap-2">
             <button 
-              @click="downloadTranscription"
+              @click="downloadTranscription(false)"
               class="btn btn-xs btn-ghost uppercase text-[9px] tracking-wider"
               title="Download transcription as .txt file"
             >
@@ -334,6 +344,16 @@ const formatTime = (seconds: number) => {
                 <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
               </svg>
               Download
+            </button>
+            <button 
+              @click="downloadTranscription(true)"
+              class="btn btn-xs btn-ghost uppercase text-[9px] tracking-wider"
+              title="Download transcription with timestamps"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3 h-3 mr-1">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2m6-4a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z" />
+              </svg>
+              Download + time
             </button>
             <button 
               @click="copyTranscription"
