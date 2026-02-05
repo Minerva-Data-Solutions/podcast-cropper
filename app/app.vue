@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useFFmpeg } from './composables/useFFmpeg'
-import { transcribeAudio, analyzeThemes, type TranscriptionSegment, type ThemeSegment } from './utils/groq'
+import { transcribeAudio, analyzeThemes, uploadVideoForProcessing, startProcessingJob, getJobStatus, type TranscriptionSegment, type ThemeSegment } from './utils/groq'
 
 const { extractAudio, extractClip, isLoading: isFFmpegLoading, progress: ffmpegProgress, isLoaded: isFFmpegLoaded } = useFFmpeg()
 
@@ -16,6 +16,7 @@ const isProcessing = ref(false)
 const isExporting = ref(false)
 const statusMessage = ref('')
 const copySuccess = ref(false)
+const isPollingJob = ref(false)
 
 const currentTime = ref(0)
 
@@ -104,13 +105,8 @@ const processVideo = async () => {
 
   try {
     isProcessing.value = true
-    statusMessage.value = 'Extracting audio locally...'
-    const audioBlob = await extractAudio(videoFile.value)
-
-    statusMessage.value = 'Transcribing with Groq Whisper...'
-    const { text, segments } = await transcribeAudio(audioBlob)
-    transcription.value = segments
-    transcriptionText.value = text
+    let text = ''
+    let segments: TranscriptionSegment[] = []
 
     // Get video duration - use stored value or wait for metadata
     let finalDuration = videoDuration.value || videoPlayer.value?.duration || 0
@@ -140,6 +136,45 @@ const processVideo = async () => {
     // Fallback to last segment end time if video duration still not available
     if (!finalDuration && segments.length > 0) {
       finalDuration = segments[segments.length - 1]?.end || 0
+    }
+
+    const isLongVideo = finalDuration > 3600
+
+    if (isLongVideo) {
+      statusMessage.value = 'Uploading video for long-form processing...'
+      const { jobId } = await uploadVideoForProcessing(videoFile.value)
+      await startProcessingJob(jobId)
+
+      isPollingJob.value = true
+      statusMessage.value = 'Processing long video...'
+
+      let jobStatus = await getJobStatus(jobId)
+      while (jobStatus.status === 'uploaded' || jobStatus.status === 'processing') {
+        statusMessage.value = `Processing long video... ${jobStatus.progress || 0}%`
+        await new Promise((resolve) => setTimeout(resolve, 3000))
+        jobStatus = await getJobStatus(jobId)
+      }
+
+      isPollingJob.value = false
+
+      if (jobStatus.status === 'error') {
+        throw new Error(jobStatus.error || 'Long video processing failed')
+      }
+
+      text = jobStatus.transcriptionText || ''
+      segments = jobStatus.segments || []
+      transcription.value = segments
+      transcriptionText.value = text
+    } else {
+      statusMessage.value = 'Extracting audio locally...'
+      const audioBlob = await extractAudio(videoFile.value)
+
+      statusMessage.value = 'Transcribing with Groq Whisper...'
+      const result = await transcribeAudio(audioBlob)
+      text = result.text
+      segments = result.segments
+      transcription.value = segments
+      transcriptionText.value = text
     }
 
     statusMessage.value = 'Analyzing themes with Groq Llama 3...'
